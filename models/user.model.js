@@ -50,7 +50,7 @@ const userSchema = new Schema(
       default: false,
     },
     votedFor: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "Candidate",
       default: null,
     },

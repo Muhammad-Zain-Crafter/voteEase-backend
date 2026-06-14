@@ -4,6 +4,8 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { Candidate } from "../models/candidate.model.js";
 import { isValidObjectId } from "mongoose";
 import { VotingStatus } from "../models/votingStatus.model.js";
+import { User } from "../models/user.model.js";
+
 
 const createCandidate = asyncHandler(async (req, res) => {
   const { name, party, age } = req.body;
@@ -116,41 +118,59 @@ const voteForCandidate = asyncHandler(async (req, res) => {
   }
 
   const votingStatus = await VotingStatus.findOne();
+
   if (!votingStatus || !votingStatus.isVotingOpen) {
     throw new ApiError(403, "Voting is currently closed");
   }
 
   const user = await User.findById(req.user._id);
+
   if (!user) {
     throw new ApiError(404, "User not found");
   }
 
-  // user already voted?
-  if (user.isVoted) {
+  if (user.isVoted === true) {
     throw new ApiError(400, "You have already cast your vote");
   }
 
   const candidate = await Candidate.findById(candidateId);
+
   if (!candidate) {
     throw new ApiError(404, "Candidate not found");
   }
 
-  // Add vote
-  candidate.votes.addToSet({ // prevent duplicate votes from same user
-    user: req.user._id,
+  // Prevent duplicate vote in candidate document
+  candidate.votes.addToSet({
+    user: user._id,
   });
 
   candidate.voteCount = candidate.votes.length;
-  await candidate.save();
 
-  // update user after voting
-  user.isVoted = true;
-  user.votedFor = candidate._id;
-  await user.save();
+  try {
+    console.log("Saving candidate...");
+    await candidate.save();
+    console.log("Candidate saved successfully");
 
-  return res.status(200).json(
-    new ApiResponse(200, candidate, "Vote submitted successfully")
-  );
+    user.isVoted = true;
+    user.votedFor = candidate._id;
+
+    console.log("User before save:", user);
+
+    await user.save({ validateBeforeSave: false });
+
+    console.log("User saved successfully");
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        candidate,
+        "Vote submitted successfully"
+      )
+    );
+  } catch (error) {
+    console.error("Vote Error:", error);
+    throw new ApiError(500, error.message);
+  }
 });
 
 const votesCount = asyncHandler(async (req, res) => {
