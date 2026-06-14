@@ -110,36 +110,47 @@ const getCandidateById = asyncHandler(async (req, res) => {
 
 const voteForCandidate = asyncHandler(async (req, res) => {
   const { candidateId } = req.params;
+
   if (!isValidObjectId(candidateId)) {
-    throw new ApiError(400, "invalid candidate id");
+    throw new ApiError(400, "Invalid candidate id");
   }
 
   const votingStatus = await VotingStatus.findOne();
   if (!votingStatus || !votingStatus.isVotingOpen) {
-    throw new ApiError(403, "Voting is currently closed. You cannot vote.");
+    throw new ApiError(403, "Voting is currently closed");
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // user already voted?
+  if (user.isVoted) {
+    throw new ApiError(400, "You have already cast your vote");
   }
 
   const candidate = await Candidate.findById(candidateId);
   if (!candidate) {
-    throw new ApiError(404, "candidate not found");
+    throw new ApiError(404, "Candidate not found");
   }
 
-  const alreadyVoted = candidate.votes.find(
-    (v) => v.user.toString() === req.user._id.toString()
-  );
-  if (alreadyVoted) {
-    throw new ApiError(400, "You have already voted for this candidate");
-  }
-
-  candidate.votes.push({
+  // Add vote
+  candidate.votes.addToSet({ // prevent duplicate votes from same user
     user: req.user._id,
   });
+
   candidate.voteCount = candidate.votes.length;
   await candidate.save();
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, candidate, "Vote submitted successfully"));
+  // update user after voting
+  user.isVoted = true;
+  user.votedFor = candidate._id;
+  await user.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, candidate, "Vote submitted successfully")
+  );
 });
 
 const votesCount = asyncHandler(async (req, res) => {
